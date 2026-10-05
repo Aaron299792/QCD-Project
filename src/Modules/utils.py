@@ -88,6 +88,41 @@ class Utils(Atom):
         eta = quad(self.r2WS, 0, self.rmax)[0] / (self.rmax * w_max)
         return r_optim, w_max, eta
 
+    def _low_x_eq(self, x, param):
+        "low-x self-consistent eq"
+        return (1.0 - x)**self.delt / x**(self.la + 2.0) - param
+
+    def _solve_x(self, y, T_val):
+        param = self.sqsNN**2 * np.exp(-2.0 * y) / (self.Q02 * T_val * self.s0)
+        x = root_scalar(self.low_x_eq, args=(param,), bracket=[1e-7, 0.99], method='brentq')
+        return x.root
+
+    def _saturation_scales(self, y, T1, T2):
+        xA = _solve_x(y, T1)
+        xB = _solve_x(-y, T2)
+
+        QA2 = self.Q02 * (1.0 - xA)**self.delt * (T1 * self.s0) / xA**self.la
+        QB2 = self.Q02 * (1.0 - xB)**self.delt * (T2 * self.s0) / xB ** self.la
+
+        return max(QA2, 1e-3), max(QB2, 1e-3)
+
+    def unintegrated_gluon_dist(self, y, px, py, QA2, QB2):
+        p_perp = np.hypot(px, py)
+        p_max = self.sqsNN * np.exp(-np.abs(y))
+        if p_perp >= p_max or p_perp < 1e-6:
+            return 0.0
+
+        k = QA2 + QB2
+        A = 2.0 * QA2 * QB2
+        B = (QA2 - QB2)**2 / k
+        C = QA2 * QB2 / k**2
+
+        prefactor = (self.C_F / (2.0 * np.pi**3 * self.alpha_S)) * (QA2 * QB2 / k**3)
+        p_dependance = A + B * p_perp**2 + C * p_perp**4
+        unintegrated_Ng = prefactor * np.exp(-p_perp**2 / k) / (p_perp**2 + self.m**2)) * factor
+
+        return max(unintegrated_Ng, 0.0)
+
     def sample_radii_rejection(self, n):
         n_prop = int(1.5 * n / self.eta)
         r = self.rng.uniform(0.0, self.rmax, n_prop)
