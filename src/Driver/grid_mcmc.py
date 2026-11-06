@@ -14,6 +14,12 @@ class TGrid:
       round((T2 / self.T_scale) * self.N),
     )
 
+  def get_Tvals(i,j):
+    return (
+      self.T_scale * (i / self.N),
+      self.T_scale * (j / self.N),
+    )
+
   def symmetrize_gridpt(i,j):
     # use symmetry transformations to map all equal-physics gridpoints 
     # to the same single gridpoint.
@@ -27,11 +33,13 @@ class TGrid:
     )
 
 @ray.remote # paralellize
-def run_mcmc(i: int, j: int) -> str:
+def run_mcmc(i: int, j: int, t_grid: TGrid) -> str:
+  T1, T2 = t_grid.get_Tvals(i,j)
   ... # run, save, return save path
 
 class mcmc_manager:
-  def __init__(self, n_batch, log=False):
+  def __init__(self, t_grid: TGrid, n_batch, log=False):
+    self.t_grid = TGrid
     self.n_batch = n_batch
     self.log = log
     self.logger = logging.getLogger('mcmc_manager')
@@ -52,7 +60,10 @@ class mcmc_manager:
   def dispatch(self):
     # start running all mcmc chains collected in parallel
     # once n_curr == n_batch
-    chain_locs = ray.get([run_mcmc.remote(i,j) for [i,j] in self.chains_to_run])
+    chain_locs = ray.get([
+      run_mcmc.remote(i,j, self.t_grid) 
+      for [i,j] in self.chains_to_run
+    ])
     for pair, idx in enumerate(self.chains_to_run):
       i,j = pair
       self.chains_runned[(i,j)] = chain_locs[idx]
@@ -64,13 +75,12 @@ class mcmc_manager:
   
   def collect_batch(
     tvals: np.ndarray, # space-flattened array of (T1, T2) pairs for each x-y point
-    t_grid: TGrid,
     start_idx: int = 0,
   ):
     idx = start_idx
     while (self.n_curr < self.n_batch) and idx < len(tvals):
       t1, t2 = tvals[idx]
-      i,j = t_grid.get_symm_gridpt(t1, t2)
+      i,j = self.t_grid.get_symm_gridpt(t1, t2)
       self.add_event(i,j)
       #
       idx+=1
