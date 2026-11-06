@@ -1,4 +1,4 @@
-from dataclasses import dataclass, astuple
+import logging
 import numpy as np
 import pymc as pm
 import ray
@@ -19,36 +19,25 @@ class TGrid:
     # to the same single gridpoint.
     ...
 
-  def get_symm_gridpt(T1,T2):
+  def get_symm_gridpt(T1,T2) -> list(int): # returns [i,j] a point in the T-grid
     return (
       self.symmetrize_gridpt(
         self.get_gridpt(T1, T2)
       )
     )
 
-  # def is_init(T1, T2):
-  #   i, j = get_symm_gridpt(T1,T2)
-  #   return self.mcmc_initialized[i,j]
-
-  # def initialize(T1, T2):
-  #   i, j = get_symm_gridpt(T1,T2)
-  #   self.mcmc_initialized[i,j] = True
-
-
-@ray.remote
+@ray.remote # paralellize
 def run_mcmc(i: int, j: int) -> str:
   ... # run, save, return save path
 
-@dataclass
-class SpatialEvent:
-  x: int # spatial grid
-  y: int # spatial grid
-  i: int # T grid
-  j: int # T grid
-
 class mcmc_manager:
-  def __init__(self, n_batch):
+  def __init__(self, n_batch, log=False):
     self.n_batch = n_batch
+    self.log = log
+    self.logger = logging.getLogger('mcmc_manager')
+    self.logger.setLevel(logging.INFO)
+    #
+    # init:
     self.n_curr = 0
     self.chains_runned = {} # {(i,j): chain output loc (str)}
     self.chains_to_run = [] # [i,j]
@@ -68,20 +57,31 @@ class mcmc_manager:
       i,j = pair
       self.chains_runned[(i,j)] = chain_locs[idx]
     #
+    if self.log:
+      self.logger.info(f"dispatch: Finished running {self.n_curr} MCMC events.")
     self.n_curr = 0
     self.chains_to_run = []
   
   def collect_batch(
     tvals: np.ndarray, # space-flattened array of (T1, T2) pairs for each x-y point
     t_grid: TGrid,
+    start_idx: int = 0,
   ):
-    idx = 0
+    idx = start_idx
     while (self.n_curr < self.n_batch) and idx < len(tvals):
       t1, t2 = tvals[idx]
       i,j = t_grid.get_symm_gridpt(t1, t2)
       self.add_event(i,j)
       #
       idx+=1
+    if self.log:
+      self.logger.info(
+        f"collect_batch: added {self.n_curr} T-grid points to evaluate:\n"
+        f"{self.chains_to_run}"
+      )
+    return idx
+
+
 
 
 
