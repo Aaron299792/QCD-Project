@@ -23,7 +23,7 @@ class TGrid:
   def symmetrize_gridpt(i,j):
     # use symmetry transformations to map all equal-physics gridpoints 
     # to the same single gridpoint.
-    ...
+    return [i,j].sort() # i < j in the output
 
   def get_symm_gridpt(T1,T2) -> list(int): # returns [i,j] a point in the T-grid
     return (
@@ -90,28 +90,3 @@ class mcmc_manager:
         f"{self.chains_to_run}"
       )
     return idx
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
